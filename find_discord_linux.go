@@ -214,7 +214,7 @@ func FindDiscords() []any {
 		}
 	}
 
-	for _, name := range []string{"discord", "discordcanary", "discordptb"} {
+	for _, name := range []string{"discord", "discordcanary", "discordptb", "discorddevelopment"} {
 		discordDir := path.Join(Home, ".config", name)
 		if !ExistsFile(discordDir) {
 			continue
@@ -225,7 +225,7 @@ func FindDiscords() []any {
 		}
 	}
 
-	for _, name := range []string{"Discord", "DiscordCanary", "DiscordPTB"} {
+	for _, name := range []string{"Discord", "DiscordCanary", "DiscordPTB", "DiscordDevelopment"} {
 		discordDir := path.Join(Home, ".var/app", "com.discordapp."+name, "config/discord")
 		if !ExistsFile(discordDir) {
 			continue
