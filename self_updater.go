@@ -7,6 +7,7 @@
 package main
 
 import (
+	"encoding/json"
 	"equilotl/buildinfo"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -38,37 +40,102 @@ func init() {
 			Log.Warn("Failed to check for self updates:", err)
 			SelfUpdateCheckDoneChan <- false
 		} else {
-			IsSelfOutdated = res.TagName != buildinfo.InstallerTag
+			IsSelfOutdated = isInstallerOutdated(res.TagName)
 			Log.Debug("Is self outdated?", IsSelfOutdated)
 			SelfUpdateCheckDoneChan <- true
 		}
 	}()
 }
 
+// InstallerRepoApi is the GitHub API root of this repo, used to resolve release
+// tags to the commit they point at.
+const InstallerRepoApi = "https://api.github.com/repos/TestcordDev/Testcordinstaller"
+
+type gitRef struct {
+	Object struct {
+		Sha string `json:"sha"`
+	} `json:"object"`
+}
+
+// resolveTagToCommit resolves a release tag to the commit it points at.
+func resolveTagToCommit(tag string) (string, error) {
+	req, err := http.NewRequest("GET", InstallerRepoApi+"/git/ref/tags/"+tag, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", UserAgent)
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode >= 300 {
+		return "", errors.New(res.Status)
+	}
+
+	var ref gitRef
+	if err := json.NewDecoder(res.Body).Decode(&ref); err != nil {
+		return "", err
+	}
+
+	return ref.Object.Sha, nil
+}
+
+// isInstallerOutdated reports whether the running binary differs from the
+// published one.
+//
+// We ship releases under a rolling tag ("latest", "rel") that is moved on every
+// publish, so the tag alone cannot answer this: comparing the release tag
+// against the tag baked in at build time reports an update on every single run,
+// and comparing only tags would never report one at all. The git hash compiled
+// into the binary is what actually identifies the build, so resolve the release
+// tag to a commit and compare that. The tag comparison is only a fallback for
+// builds that have no usable hash.
+func isInstallerOutdated(releaseTag string) bool {
+	local := buildinfo.InstallerGitHash
+
+	if local == "" || local == buildinfo.VersionUnknown {
+		Log.Debug("No git hash baked in, falling back to tag comparison")
+		return releaseTag != buildinfo.InstallerTag
+	}
+
+	commit, err := resolveTagToCommit(releaseTag)
+	if err != nil {
+		Log.Debug("Failed to resolve release tag to a commit, falling back to tag comparison:", err)
+		return releaseTag != buildinfo.InstallerTag
+	}
+
+	// the baked in hash is the short (abbreviated) form of the commit
+	if strings.HasPrefix(commit, local) || strings.HasPrefix(local, commit) {
+		Log.Debug("Installer matches published commit", commit)
+		return false
+	}
+
+	Log.Debug("Installer commit", local, "differs from published commit", commit)
+	return true
+}
+
 func GetInstallerDownloadLink() string {
 	const BaseUrl = "https://github.com/TestcordDev/Testcordinstaller/releases/latest/download/"
+	isCli := buildinfo.UiType == buildinfo.UiTypeCli
+
 	switch runtime.GOOS {
 	case "windows":
-		filename := Ternary(buildinfo.UiType == buildinfo.UiTypeCli, "TestcordinstallerCli", "Testcordinstaller")
-		if runtime.GOARCH == "arm64" {
-			filename += "-arm64"
+		// 32bit builds are published without an arch suffix, so only amd64/arm64 exist
+		filename := "Windows_Testcord_installer-rel"
+		if isCli {
+			filename = "Windows_Testcord_installer-rel_cli"
 		}
 		return BaseUrl + filename + ".exe"
-	case "darwin":
-		switch runtime.GOARCH {
-		case "amd64":
-			return BaseUrl + "Testcordinstaller-darwin-x64.zip"
-		case "arm64":
-			return BaseUrl + "Testcordinstaller-darwin-arm64.zip"
-		default:
-			return ""
-		}
 	case "linux":
-		if runtime.GOARCH == "arm64" {
-			return BaseUrl + "TestcordinstallerCli-linux-arm64"
+		if isCli {
+			return BaseUrl + "Linux_Testcord_installer-rel_cli"
 		}
-		return BaseUrl + "TestcordinstallerCli-linux"
+		return BaseUrl + "Linux_Testcord_installer-rel"
 	default:
+		// no macos assets are published to this repo
 		return ""
 	}
 }
