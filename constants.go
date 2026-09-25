@@ -16,6 +16,11 @@ const ReleaseUrlFallback = "https://github.com/TestcordDev/Testcord/releases/tag
 const InstallerReleaseUrl = "https://api.github.com/repos/TestcordDev/Testcordinstaller/releases/latest"
 const InstallerReleaseUrlFallback = "https://testcord.org/releases/xcinstaller"
 
+// ReleaseRepoApi / InstallerRepoApi are the GitHub API roots of the mod and the
+// installer, used to resolve release tags to the commit they point at.
+const ReleaseRepoApi = "https://api.github.com/repos/TestcordDev/Testcord"
+const InstallerRepoApi = "https://api.github.com/repos/TestcordDev/Testcordinstaller"
+
 var UserAgent = "TestCordInstaller/" + buildinfo.InstallerGitHash + " (https://github.com/TestcordDev/Testcordinstaller)"
 
 const SupportUrl = "https://github.com/TestcordDev/Testcordinstaller/issues"

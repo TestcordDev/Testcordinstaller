@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type GithubRelease struct {
@@ -35,6 +36,50 @@ var GithubDoneChan chan bool
 var InstalledHash = "None"
 var LatestHash = "Unknown"
 var IsDevInstall bool
+
+// hashesMatch compares two git hashes, tolerating the abbreviated (short) form
+// on either side. The release commit and the asar banner both use the full
+// hash, but a build stamped with a short hash should still compare equal.
+func hashesMatch(a, b string) bool {
+	if a == "" || b == "" || a == "Unknown" || b == "None" {
+		return false
+	}
+	return strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
+}
+
+type gitRef struct {
+	Object struct {
+		Sha string `json:"sha"`
+	} `json:"object"`
+}
+
+// resolveTagToCommitInRepo resolves a release tag to the commit it points at.
+func resolveTagToCommitInRepo(repoApi, tag string) (string, error) {
+	req, err := http.NewRequest("GET", repoApi+"/git/ref/tags/"+tag, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", UserAgent)
+
+	// bounded so a slow or rate limited API can never stall the version check
+	client := &http.Client{Timeout: 10 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode >= 300 {
+		return "", errors.New(res.Status)
+	}
+
+	var ref gitRef
+	if err := json.NewDecoder(res.Body).Decode(&ref); err != nil {
+		return "", err
+	}
+
+	return ref.Object.Sha, nil
+}
 
 func GetGithubRelease(url, fallbackUrl string) (*GithubRelease, error) {
 	Log.Debug("Fetching", url)
@@ -103,10 +148,19 @@ func InitGithubDownloader() {
 
 		ReleaseData = *data
 
-		i := strings.LastIndex(data.Name, " ") + 1
-		LatestHash = data.Name[i:]
+		// The release is published under a rolling tag ("latest") whose name
+		// carries no version, so the commit the tag points at is the only usable
+		// version identifier. Fall back to the old convention of reading the hash
+		// off the release name ("<name> <hash>") if that fails.
+		LatestHash = "Unknown"
+		if commit, err := resolveTagToCommitInRepo(ReleaseRepoApi, data.TagName); err == nil && commit != "" {
+			LatestHash = commit
+		} else if i := strings.LastIndex(data.Name, " ") + 1; i > 0 && i < len(data.Name) {
+			LatestHash = data.Name[i:]
+		}
+
 		Log.Debug("Finished fetching GitHub Data")
-		Log.Debug("Latest hash is", LatestHash, "Local Install is", Ternary(LatestHash == InstalledHash, "up to date!", "outdated!"))
+		Log.Debug("Latest hash is", LatestHash, "Local Install is", Ternary(hashesMatch(LatestHash, InstalledHash), "up to date!", "outdated!"))
 	}()
 
 	// either .asar file or directory with main.js file (in DEV)
@@ -130,7 +184,11 @@ func InitGithubDownloader() {
 
 	Log.Debug("Found existing TestCord Install. Checking for hash...")
 
-	re := regexp.MustCompile(`// TestCord (\w+)`)
+	// The mod's build banner still says "// Vencord <hash>" (inherited from
+	// upstream, see scripts/build/common.mjs), so match the banner for any of
+	// the fork names rather than only "TestCord" - matching only our own name
+	// made every existing install look like it had no version at all.
+	re := regexp.MustCompile(`// (?:TestCord|Vencord|Equicord) ([0-9a-f]{7,40})\b`)
 	match := re.FindSubmatch(b)
 	if match != nil {
 		InstalledHash = string(match[1])

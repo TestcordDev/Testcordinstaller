@@ -7,7 +7,6 @@
 package main
 
 import (
-	"encoding/json"
 	"equilotl/buildinfo"
 	"errors"
 	"fmt"
@@ -47,40 +46,9 @@ func init() {
 	}()
 }
 
-// InstallerRepoApi is the GitHub API root of this repo, used to resolve release
-// tags to the commit they point at.
-const InstallerRepoApi = "https://api.github.com/repos/TestcordDev/Testcordinstaller"
-
-type gitRef struct {
-	Object struct {
-		Sha string `json:"sha"`
-	} `json:"object"`
-}
-
 // resolveTagToCommit resolves a release tag to the commit it points at.
 func resolveTagToCommit(tag string) (string, error) {
-	req, err := http.NewRequest("GET", InstallerRepoApi+"/git/ref/tags/"+tag, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", UserAgent)
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode >= 300 {
-		return "", errors.New(res.Status)
-	}
-
-	var ref gitRef
-	if err := json.NewDecoder(res.Body).Decode(&ref); err != nil {
-		return "", err
-	}
-
-	return ref.Object.Sha, nil
+	return resolveTagToCommitInRepo(InstallerRepoApi, tag)
 }
 
 // isInstallerOutdated reports whether the running binary differs from the
