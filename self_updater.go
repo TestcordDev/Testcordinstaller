@@ -49,8 +49,11 @@ func GetInstallerDownloadLink() string {
 	const BaseUrl = "https://github.com/TestcordDev/Testcordinstaller/releases/latest/download/"
 	switch runtime.GOOS {
 	case "windows":
-		filename := Ternary(buildinfo.UiType == buildinfo.UiTypeCli, "TestcordinstallerCli.exe", "Testcordinstaller.exe")
-		return BaseUrl + filename
+		filename := Ternary(buildinfo.UiType == buildinfo.UiTypeCli, "TestcordinstallerCli", "Testcordinstaller")
+		if runtime.GOARCH == "arm64" {
+			filename += "-arm64"
+		}
+		return BaseUrl + filename + ".exe"
 	case "darwin":
 		switch runtime.GOARCH {
 		case "amd64":
@@ -61,6 +64,9 @@ func GetInstallerDownloadLink() string {
 			return ""
 		}
 	case "linux":
+		if runtime.GOARCH == "arm64" {
+			return BaseUrl + "TestcordinstallerCli-linux-arm64"
+		}
 		return BaseUrl + "TestcordinstallerCli-linux"
 	default:
 		return ""
