@@ -37,6 +37,15 @@ var InstalledHash = "None"
 var LatestHash = "Unknown"
 var IsDevInstall bool
 
+// shortHash abbreviates a full commit hash for display. "None", "Unknown" and
+// already-short values are passed through untouched.
+func shortHash(h string) string {
+	if len(h) > 7 {
+		return h[:7]
+	}
+	return h
+}
+
 // hashesMatch compares two git hashes, tolerating the abbreviated (short) form
 // on either side. The release commit and the asar banner both use the full
 // hash, but a build stamped with a short hash should still compare equal.
@@ -150,8 +159,11 @@ func InitGithubDownloader() {
 
 		// The release is published under a rolling tag ("latest") whose name
 		// carries no version, so the commit the tag points at is the only usable
-		// version identifier. Fall back to the old convention of reading the hash
-		// off the release name ("<name> <hash>") if that fails.
+		// version identifier. The tag can drift ahead of the published assets, so
+		// this can report an update that a re-download turns out to be identical
+		// to; that errs towards re-downloading rather than leaving a stale mod.
+		// Fall back to the old convention of reading the hash off the release name
+		// ("<name> <hash>") if resolution fails.
 		LatestHash = "Unknown"
 		if commit, err := resolveTagToCommitInRepo(ReleaseRepoApi, data.TagName); err == nil && commit != "" {
 			LatestHash = commit

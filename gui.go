@@ -729,7 +729,7 @@ func loop() {
 				}, nil},
 				g.Dummy(0, 10),
 				g.Label("TestcordInstaller Version: "+buildinfo.InstallerTag+" ("+buildinfo.InstallerGitHash+")"+Ternary(IsSelfOutdated, " - OUTDATED", "")),
-				g.Label("Local TestCord Version: "+InstalledHash),
+				g.Label("Local TestCord Version: "+shortHash(InstalledHash)),
 
 				&CondWidget{
 					GithubError == nil,
@@ -737,7 +737,7 @@ func loop() {
 						if IsDevInstall {
 							return g.Label("Not updating TestCord due to being in DevMode")
 						}
-						return g.Label("Latest TestCord Version: " + LatestHash)
+						return g.Label("Latest TestCord Version: " + shortHash(LatestHash))
 					}, func() g.Widget {
 						return g.Style().SetFontSize(20).To(renderErrorCard(DiscordRed, color.White, "Failed to fetch Info from GitHub. If this issue persists, visit "+SupportUrl+" for help.", 40))
 					},
